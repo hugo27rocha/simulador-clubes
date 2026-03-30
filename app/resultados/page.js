@@ -1,17 +1,13 @@
 "use client"
 
-export const dynamic = "force-dynamic"
-
 import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-
+import { useRouter } from "next/navigation"
 
 export default function Resultados() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const tipo = searchParams.get("tipo") || "masculino"
 
   const [ranking, setRanking] = useState([])
+  const [tipo, setTipo] = useState("masculino")
 
   // CLUBES
   const clubesMasculino = [
@@ -36,21 +32,24 @@ export default function Resultados() {
     { sigla: "MAC", nome: "Maia Atlético Clube" },
   ]
 
-  const clubes = tipo === "feminino" ? clubesFeminino : clubesMasculino
-
-  // LOAD COM PROTEÇÃO
+  // 🔥 LER PARAMS NO CLIENTE
   useEffect(() => {
-    const data = localStorage.getItem(`ranking-${tipo}`)
+    const params = new URLSearchParams(window.location.search)
+    const tipoURL = params.get("tipo") || "masculino"
+    setTipo(tipoURL)
+
+    const data = localStorage.getItem(`ranking-${tipoURL}`)
 
     if (!data) {
-      router.push("/") // 🔥 evita crash / acesso direto
+      router.push("/")
       return
     }
 
     setRanking(JSON.parse(data))
-  }, [tipo])
+  }, [])
 
-  // CORES
+  const clubes = tipo === "feminino" ? clubesFeminino : clubesMasculino
+
   const getStyle = (index) => {
     if (index === 0) return "bg-yellow-500/80 scale-105"
     if (index === 1) return "bg-gray-300 text-black"
@@ -59,7 +58,6 @@ export default function Resultados() {
     return "bg-white/10"
   }
 
-  // POSIÇÃO
   const getPos = (i) => {
     if (i === 0) return "🥇"
     if (i === 1) return "🥈"
@@ -67,14 +65,12 @@ export default function Resultados() {
     return `${i + 1}º`
   }
 
-  // RESET
   const handleReset = () => {
     localStorage.removeItem(`ranking-${tipo}`)
     localStorage.removeItem(`provas-${tipo}`)
     router.push("/")
   }
 
-  // PARTILHAR
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
@@ -96,27 +92,21 @@ export default function Resultados() {
       </h1>
 
       <div className="w-full max-w-md">
-        {ranking.map(([sigla, pontos], i) => {
-          const clube = clubes.find(c => c.sigla === sigla)
-          const nome = clube ? clube.nome : sigla
-
-          return (
-            <div
-              key={sigla}
-              className={`p-4 mb-3 rounded-3xl flex justify-between items-center shadow-xl backdrop-blur-md border border-white/20 transition-all duration-300 animate-fadeInUp ${getStyle(i)}`}
-              style={{ animationDelay: `${i * 0.05}s` }}
-            >
-              <span className="flex items-center gap-2 font-semibold">
-                <span className="text-lg font-extrabold text-purple-300">
-                  {getPos(i)}
-                </span>
-                {sigla}
+        {ranking.map(([sigla, pontos], i) => (
+          <div
+            key={sigla}
+            className={`p-4 mb-3 rounded-3xl flex justify-between items-center shadow-xl backdrop-blur-md border border-white/20 ${getStyle(i)}`}
+          >
+            <span className="flex items-center gap-2 font-semibold">
+              <span className="text-lg font-extrabold text-purple-300">
+                {getPos(i)}
               </span>
+              {sigla}
+            </span>
 
-              <span className="font-bold">{pontos} pts</span>
-            </div>
-          )
-        })}
+            <span className="font-bold">{pontos} pts</span>
+          </div>
+        ))}
       </div>
 
       <div className="mt-6 flex flex-col gap-4 w-full max-w-md">
@@ -136,23 +126,6 @@ export default function Resultados() {
         </button>
 
       </div>
-
-      <style jsx>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fadeInUp {
-          animation: fadeInUp 0.4s ease forwards;
-        }
-      `}</style>
-
     </div>
   )
 }
