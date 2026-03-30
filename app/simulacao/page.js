@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import {
   DndContext,
   closestCenter,
@@ -26,7 +26,7 @@ function Item({ id, index, nomeCompleto }) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    touchAction: "none", // evita conflito com scroll
+    touchAction: "none",
     userSelect: "none",
   }
 
@@ -40,9 +40,12 @@ function Item({ id, index, nomeCompleto }) {
       className="p-3 mb-2 bg-white/10 backdrop-blur-md rounded-2xl shadow-md border border-white/20 flex items-center justify-between text-sm text-white"
     >
       <div className="flex items-center gap-2">
-        <span className="font-bold text-purple-300">{index + 1}.</span>
+        <span className="font-bold text-purple-300">
+          {index + 1}.
+        </span>
         <span>{id}</span>
       </div>
+
       <span className="opacity-50 text-lg">⋮⋮</span>
     </div>
   )
@@ -50,9 +53,17 @@ function Item({ id, index, nomeCompleto }) {
 
 export default function Simulacao() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const tipo = searchParams.get("tipo") || "masculino"
 
+  const [tipo, setTipo] = useState("masculino")
+
+  // 🔥 LER URL NO CLIENTE
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tipoURL = params.get("tipo") || "masculino"
+    setTipo(tipoURL)
+  }, [])
+
+  // CLUBES
   const clubesMasculino = [
     { sigla: "SCP", nome: "Sporting Clube de Portugal" },
     { sigla: "SLB", nome: "Sport Lisboa e Benfica" },
@@ -77,6 +88,7 @@ export default function Simulacao() {
 
   const clubes = tipo === "feminino" ? clubesFeminino : clubesMasculino
 
+  // PROVAS
   const provasMasculino = [
     "4x100m","Peso","1500m","5000m Marcha","Vara","100m","Dardo","Comprimento",
     "400m","5000m","Martelo","Altura","400m bar","800m","110m bar","200m",
@@ -98,95 +110,124 @@ export default function Simulacao() {
 
   const storageKey = `provas-${tipo}`
 
-  const [provas, setProvas] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(storageKey)
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved)
-          if (parsed.length === listaProvas.length) return parsed
-        } catch {}
-      }
+  const [provas, setProvas] = useState([])
+
+  // 🔥 INICIALIZAR
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKey)
+
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed.length === listaProvas.length) {
+          setProvas(parsed)
+          return
+        }
+      } catch {}
     }
-    return listaProvas.map((nome) => ({
+
+    const inicial = listaProvas.map((nome) => ({
       nome,
       ordem: clubes.map((c) => c.sigla),
     }))
-  })
 
+    setProvas(inicial)
+  }, [tipo])
+
+  // GUARDAR
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(provas))
-  }, [provas, storageKey])
+    if (provas.length > 0) {
+      localStorage.setItem(storageKey, JSON.stringify(provas))
+    }
+  }, [provas])
 
   const handleDragEnd = (event, provaIndex) => {
     const { active, over } = event
     if (!over) return
+
     if (active.id !== over.id) {
       const nova = [...provas]
       const oldIndex = nova[provaIndex].ordem.indexOf(active.id)
       const newIndex = nova[provaIndex].ordem.indexOf(over.id)
-      nova[provaIndex].ordem = arrayMove(nova[provaIndex].ordem, oldIndex, newIndex)
+
+      nova[provaIndex].ordem = arrayMove(
+        nova[provaIndex].ordem,
+        oldIndex,
+        newIndex
+      )
+
       setProvas(nova)
     }
   }
 
   const calcular = () => {
     const totais = {}
+
     provas.forEach((prova) => {
       const n = prova.ordem.length
       prova.ordem.forEach((equipa, index) => {
         totais[equipa] = (totais[equipa] || 0) + (n - index)
       })
     })
+
     const ranking = Object.entries(totais).sort((a, b) => b[1] - a[1])
+
     localStorage.setItem(`ranking-${tipo}`, JSON.stringify(ranking))
+
     router.push(`/resultados?tipo=${tipo}`)
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black to-purple-900 text-white p-5">
-
+      
       <h1 className="text-xl mb-2 text-center font-bold">
-        {tipo === "feminino" ? "Simulação Feminina 🏃‍♀️" : "Simulação Masculina 🏃"}
+        {tipo === "feminino"
+          ? "Simulação Feminina 🏃‍♀️"
+          : "Simulação Masculina 🏃"}
       </h1>
 
       <p className="text-center text-gray-400 text-sm mb-4">
         Arrasta as equipas para ordenar a classificação em cada prova.
       </p>
 
-      <div className="w-full flex justify-center">
-        <div className="w-[60%] min-w-[260px]">
-          {provas.map((prova, provaIndex) => (
-            <div key={prova.nome} className="mb-5">
-              <h2 className="mb-2 font-semibold text-purple-300 text-base">
-                {prova.nome}
-              </h2>
+      <div className="max-w-md mx-auto">
+        {provas.map((prova, provaIndex) => (
+          <div key={prova.nome} className="mb-5">
+            <h2 className="mb-2 font-semibold text-purple-300 text-base">
+              {prova.nome}
+            </h2>
 
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(e) => handleDragEnd(e, provaIndex)}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(e) => handleDragEnd(e, provaIndex)}
+            >
+              <SortableContext
+                items={prova.ordem}
+                strategy={verticalListSortingStrategy}
               >
-                <SortableContext
-                  items={prova.ordem}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {prova.ordem.map((sigla, i) => {
-                    const clube = clubes.find((c) => c.sigla === sigla)
-                    return <Item key={sigla} id={sigla} index={i} nomeCompleto={clube ? clube.nome : sigla} />
-                  })}
-                </SortableContext>
-              </DndContext>
-            </div>
-          ))}
+                {prova.ordem.map((sigla, i) => {
+                  const clube = clubes.find((c) => c.sigla === sigla)
+                  return (
+                    <Item
+                      key={sigla}
+                      id={sigla}
+                      index={i}
+                      nomeCompleto={clube ? clube.nome : sigla}
+                    />
+                  )
+                })}
+              </SortableContext>
+            </DndContext>
+          </div>
+        ))}
 
-          <button
-            onClick={calcular}
-            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 py-4 rounded-3xl text-base font-semibold mt-4 shadow-xl flex items-center justify-center transition-transform transform active:scale-95"
-          >
-            Calcular Classificação
-          </button>
-        </div>
+        <button
+          onClick={calcular}
+          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 py-4 rounded-3xl text-base font-semibold mt-4 shadow-xl flex items-center justify-center transition-transform transform active:scale-95"
+        >
+          Calcular Classificação
+        </button>
       </div>
     </div>
   )
