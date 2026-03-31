@@ -88,7 +88,7 @@ export default function Resultados() {
     <div className="min-h-screen bg-gradient-to-b from-purple-900 via-black to-black text-white flex flex-col items-center justify-center p-6">
 
       <h1 className="text-3xl font-extrabold mb-6">
-        {tipo === "feminino" ? "🏆 Resultado Feminino" : "🏆 Resultado Masculino"}
+        {tipo === "feminino" ? "🏆 Resultados Feminino" : "🏆 Resultados Masculino"}
       </h1>
 
       <div className="w-full max-w-md">

@@ -9,6 +9,7 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
+  DragOverlay,
 } from "@dnd-kit/core"
 import {
   SortableContext,
@@ -19,34 +20,48 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 
 // ITEM
-function Item({ id, index, nomeCompleto }) {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id })
+function Item({ id, index, onRemove }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    touchAction: "none",
-    userSelect: "none",
   }
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
-      title={nomeCompleto}
-      className="p-3 mb-2 bg-white/10 backdrop-blur-md rounded-2xl shadow-md border border-white/20 flex items-center justify-between text-sm text-white"
+      className={`p-2 mb-2 rounded-xl flex justify-between items-center text-sm border
+        ${isDragging ? "bg-purple-600 border-purple-400" : "bg-white/10 border-white/20"}
+      `}
     >
-      <div className="flex items-center gap-2">
-        <span className="font-bold text-purple-300">
-          {index + 1}.
-        </span>
-        <span>{id}</span>
+      {/* 🔥 ZONA DRAG (só aqui funciona drag) */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="flex items-center gap-2 flex-1"
+      >
+        <span>{index + 1}. {id}</span>
       </div>
 
-      <span className="opacity-50 text-lg">⋮⋮</span>
+      {/* 🔥 BOTÃO REMOVER (agora funciona!) */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove(id)
+        }}
+        className="text-red-400 px-2"
+      >
+        ✕
+      </button>
     </div>
   )
 }
@@ -55,36 +70,17 @@ export default function Simulacao() {
   const router = useRouter()
 
   const [tipo, setTipo] = useState("masculino")
+  const [provaIndex, setProvaIndex] = useState(0)
+  const [activeId, setActiveId] = useState(null)
 
-  // 🔥 LER URL NO CLIENTE
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const tipoURL = params.get("tipo") || "masculino"
-    setTipo(tipoURL)
+    setTipo(params.get("tipo") || "masculino")
   }, [])
 
   // CLUBES
-  const clubesMasculino = [
-    { sigla: "SCP", nome: "Sporting Clube de Portugal" },
-    { sigla: "SLB", nome: "Sport Lisboa e Benfica" },
-    { sigla: "AJS", nome: "Associação Cultural e Desportiva do Jardim da Serra" },
-    { sigla: "JV", nome: "Juventude Vidigalense" },
-    { sigla: "ACPV", nome: "Atlético Clube da Póvoa de Varzim" },
-    { sigla: "GDE", nome: "Grupo Desportivo do Estreito" },
-    { sigla: "CPTSC", nome: "Centro Popular de Trabalhadores do Sobral de Ceira" },
-    { sigla: "CAMG", nome: "Clube Atletismo de Marinha Grande" },
-  ]
-
-  const clubesFeminino = [
-    { sigla: "SCP", nome: "Sporting Clube de Portugal" },
-    { sigla: "GDE", nome: "Grupo Desportivo do Estreito" },
-    { sigla: "AJS", nome: "Associação Cultural e Desportiva do Jardim da Serra" },
-    { sigla: "JV", nome: "Juventude Vidigalense" },
-    { sigla: "SCB", nome: "Sporting Clube de Braga" },
-    { sigla: "ACPV", nome: "Atlético Clube da Póvoa de Varzim" },
-    { sigla: "JOMA", nome: "Juventude Operária do Monte Abraão" },
-    { sigla: "MAC", nome: "Maia Atlético Clube" },
-  ]
+  const clubesMasculino = ["SCP","SLB","AJS","JV","ACPV","GDE","CPTSC","CAMG"]
+  const clubesFeminino = ["SCP","GDE","AJS","JV","SCB","ACPV","JOMA","MAC"]
 
   const clubes = tipo === "feminino" ? clubesFeminino : clubesMasculino
 
@@ -104,45 +100,27 @@ export default function Simulacao() {
   const listaProvas = tipo === "feminino" ? provasFeminino : provasMasculino
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 5 } })
+    useSensor(PointerSensor),
+    useSensor(TouchSensor)
   )
 
-  const storageKey = `provas-${tipo}`
-
   const [provas, setProvas] = useState([])
+  const [submetidas, setSubmetidas] = useState([])
 
-  // 🔥 INICIALIZAR
   useEffect(() => {
-    const saved = localStorage.getItem(storageKey)
-
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (parsed.length === listaProvas.length) {
-          setProvas(parsed)
-          return
-        }
-      } catch {}
-    }
-
     const inicial = listaProvas.map((nome) => ({
       nome,
-      ordem: clubes.map((c) => c.sigla),
+      ordem: [...clubes],
     }))
-
     setProvas(inicial)
+    setSubmetidas([])
   }, [tipo])
 
-  // GUARDAR
-  useEffect(() => {
-    if (provas.length > 0) {
-      localStorage.setItem(storageKey, JSON.stringify(provas))
-    }
-  }, [provas])
-
-  const handleDragEnd = (event, provaIndex) => {
+  // DRAG
+  const handleDragEnd = (event) => {
     const { active, over } = event
+    setActiveId(null)
+
     if (!over) return
 
     if (active.id !== over.id) {
@@ -160,75 +138,177 @@ export default function Simulacao() {
     }
   }
 
-  const calcular = () => {
+  // 🔥 REMOVER EQUIPA (DSQ)
+  const removerEquipa = (id) => {
+    const nova = [...provas]
+
+    nova[provaIndex].ordem =
+      nova[provaIndex].ordem.filter(e => e !== id)
+
+    setProvas(nova)
+  }
+
+  // SUBMETER
+  const submeter = () => {
+    if (!submetidas.includes(provaIndex)) {
+      setSubmetidas([...submetidas, provaIndex])
+    }
+  }
+
+  // RESET
+  const resetProva = () => {
+    const nova = [...provas]
+    nova[provaIndex].ordem = [...clubes]
+
+    setProvas(nova)
+    setSubmetidas(submetidas.filter(p => p !== provaIndex))
+  }
+
+  // 🔥 CLASSIFICAÇÃO CORRETA
+  const calcularRanking = () => {
     const totais = {}
 
-    provas.forEach((prova) => {
+    // todas começam com 0
+    clubes.forEach((c) => {
+      totais[c] = 0
+    })
+
+    submetidas.forEach((i) => {
+      const prova = provas[i]
       const n = prova.ordem.length
+
       prova.ordem.forEach((equipa, index) => {
-        totais[equipa] = (totais[equipa] || 0) + (n - index)
+        totais[equipa] += (n - index)
       })
     })
 
-    const ranking = Object.entries(totais).sort((a, b) => b[1] - a[1])
-
-    localStorage.setItem(`ranking-${tipo}`, JSON.stringify(ranking))
-
-    router.push(`/resultados?tipo=${tipo}`)
+    return Object.entries(totais)
+      .sort((a, b) => b[1] - a[1])
   }
 
+  const ranking = calcularRanking()
+
+  const feitas = submetidas.length
+  const total = listaProvas.length
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black to-purple-900 text-white p-5">
-      
-      <h1 className="text-xl mb-2 text-center font-bold">
-        {tipo === "feminino"
-          ? "Simulação Feminina 🏃‍♀️"
-          : "Simulação Masculina 🏃"}
+    <div className="min-h-screen bg-black text-white p-4">
+
+      <h1 className="text-center font-bold mb-3">
+        {tipo === "feminino" ? "1ª Divisão - Feminino 🏃‍♀️" : "1ª Divisão -Masculino 🏃"}
       </h1>
 
-      <p className="text-center text-gray-400 text-sm mb-4">
-        Arrasta as equipas para ordenar a classificação em cada prova.
-      </p>
+      {/* GRID PROVAS */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {listaProvas.map((p, i) => (
+          <button
+            key={i}
+            onClick={() => setProvaIndex(i)}
+            className={`text-xs py-2 rounded-xl
+              ${provaIndex === i ? "bg-purple-600" : "bg-gray-700"}
+              ${submetidas.includes(i) ? "bg-green-600" : ""}
+            `}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
 
-      <div className="max-w-md mx-auto">
-        {provas.map((prova, provaIndex) => (
-          <div key={prova.nome} className="mb-5">
-            <h2 className="mb-2 font-semibold text-purple-300 text-base">
-              {prova.nome}
-            </h2>
+      {/* LISTA */}
+      <div className="max-w-xs mx-auto">
 
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={(e) => handleDragEnd(e, provaIndex)}
+        <h2 className="text-center mb-2">
+          {listaProvas[provaIndex]}
+        </h2>
+
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={(e) => setActiveId(e.active.id)}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={provas[provaIndex]?.ordem || []}
+            strategy={verticalListSortingStrategy}
+          >
+            {provas[provaIndex]?.ordem.map((sigla, i) => (
+              <Item
+                key={sigla}
+                id={sigla}
+                index={i}
+                onRemove={removerEquipa}
+              />
+            ))}
+          </SortableContext>
+
+          <DragOverlay>
+            {activeId ? (
+              <div className="p-2 bg-purple-600 rounded-xl">
+                {activeId}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+
+        {/* BOTÕES */}
+        <div className="flex justify-center gap-2 mt-3">
+          {!submetidas.includes(provaIndex) ? (
+            <button
+              onClick={submeter}
+              className="bg-green-600 px-4 py-2 rounded-xl text-sm"
             >
-              <SortableContext
-                items={prova.ordem}
-                strategy={verticalListSortingStrategy}
-              >
-                {prova.ordem.map((sigla, i) => {
-                  const clube = clubes.find((c) => c.sigla === sigla)
-                  return (
-                    <Item
-                      key={sigla}
-                      id={sigla}
-                      index={i}
-                      nomeCompleto={clube ? clube.nome : sigla}
-                    />
-                  )
-                })}
-              </SortableContext>
-            </DndContext>
+              Submeter
+            </button>
+          ) : (
+            <button
+              onClick={resetProva}
+              className="bg-red-600 px-4 py-2 rounded-xl text-sm"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* CLASSIFICAÇÃO */}
+      <div className="mt-6 max-w-xs mx-auto">
+
+        <h2 className="text-center font-bold mb-2">
+          Classificação Geral
+        </h2>
+
+        <div className="w-full bg-gray-700 h-2 rounded-full mb-3">
+          <div
+            className="bg-green-500 h-2 rounded-full"
+            style={{ width: `${(feitas / total) * 100}%` }}
+          />
+        </div>
+
+        {ranking.map(([sigla, pts], i) => (
+          <div
+            key={sigla}
+            className={`p-2 mb-2 rounded-xl flex justify-between text-sm
+              ${i === 0 ? "bg-yellow-500" : ""}
+              ${i === 1 ? "bg-gray-300 text-black" : ""}
+              ${i === 2 ? "bg-amber-700" : ""}
+              ${i >= clubes.length - 2 ? "bg-red-600" : ""}
+              ${i > 2 && i < clubes.length - 2 ? "bg-white/10" : ""}
+            `}
+          >
+            <span>{i + 1}. {sigla}</span>
+            <span>{pts}</span>
           </div>
         ))}
 
         <button
-          onClick={calcular}
-          className="w-full bg-gradient-to-r from-purple-500 to-pink-500 py-4 rounded-3xl text-base font-semibold mt-4 shadow-xl flex items-center justify-center transition-transform transform active:scale-95"
+          onClick={() => router.push("/")}
+          className="w-full mt-4 bg-purple-600 py-3 rounded-xl"
         >
-          Calcular Classificação
+          Nova Simulação
         </button>
+
       </div>
+
     </div>
   )
 }
